@@ -17,6 +17,11 @@ FMT_AS_REQ          = '! 36s 36s I'
 FMT_AUTHENTICATOR   = '! 36s I I'
 FMT_AP_REQ          = '! 129s 65s'
 FMT_AS_RES          = '! 16s 36s 36s I I 129s'
+FMT_APP_DATA_REQ    = '! I 9s'
+
+APP_DATA_REQUEST = 12345
+APP_DATA         = 1234
+TERMINATE        = 5555
 
 # ClientID
 client_id = b'b0c6fe2a-72d4-4e02-a389-8243f2c7143c'
@@ -26,6 +31,9 @@ server_id = b'1a1acb43-6bd6-4a26-9ab8-519c7aa08cba'
 
 # Client key
 kc = binascii.unhexlify('1F61ECB5ED5D6BAF8D7A7068B28DCC8E')
+
+# Output file path
+out_fpath = 'output.pdf'
 
 def encrypt(key, plain):
     IV = os.urandom(16)
@@ -89,7 +97,6 @@ def main():
 
         # Send AP_REQ message to server
         message2 = (tkt, auth_enc)
-        print('tkt_len', len(tkt))
         s = struct.Struct(FMT_AP_REQ)
         msg_pack = s.pack(*message2)
 
@@ -97,12 +104,49 @@ def main():
 
         # Receive AP_RES message
         response2 = sock.recvfrom(MAX_LEN)
+        decrypted = decrypt(kc, response2[0])
+        timestamp = int.from_bytes(decrypted, "little")
+        dt_object = datetime.fromtimestamp(timestamp)
 
         # Send APP_DATA_REQUEST message to server
+        message3 = (APP_DATA_REQUEST, b'body-data')
+        s = struct.Struct(FMT_APP_DATA_REQ)
+        packet = s.pack(*message3)
+        enc_pack = encrypt(kcs, packet)
 
-        # Receive APP_DATA
+        sock.sendto(enc_pack, (HOST_SS, PORT_SS))
 
-        # Receive TERMINATE
+        # Receive APP_DATA packet and decrypt
+        response3 = sock.recvfrom(MAX_LEN)
+        resp_dec = decrypt(kcs, response3[0])
+
+        if (resp_dec == b'Unknown request'):
+            print('Unknown request type')
+            return
+
+        s = struct.Struct('! I I')
+        type, len = s.unpack(resp_dec[0:8])
+
+        if type == APP_DATA:
+            f = open(out_fpath, 'wb')
+
+        while type == APP_DATA:
+            s = struct.Struct('! I I ' + '{}s'.format(len))
+            _, _, chunk = s.unpack(resp_dec)
+            f.write(chunk)
+
+            response3 = sock.recvfrom(MAX_LEN)
+            resp_dec = decrypt(kcs, response3[0])
+
+            s = struct.Struct('! I I')
+            type, len = s.unpack(resp_dec[0:8])
+
+        # TERMINATE packet
+        if type == TERMINATE:
+            s = struct.Struct('! I I')
+            _, crcvalue = s.unpack(resp_dec[0:8])
+
+            f.close()
 
     # print('Received', repr(data))
 

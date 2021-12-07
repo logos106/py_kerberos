@@ -1,7 +1,10 @@
-import binascii
+import struct
 
+s = struct.Struct('! I I I 5s')
+packed = s.pack(34, 56, 66, b'wertr')
 
-ks = binascii.unhexlify('2261ECB5ED5D6BAF8D7A7068B28DCC8E')
-print(ks)
-dd = binascii.hexlify(ks)
-print(dd)
+s = struct.Struct('! I')
+a = s.unpack(packed[0:4])[0]
+
+# print(unpacked[0], unpacked[1], unpacked[2])
+print(a)

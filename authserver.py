@@ -4,6 +4,7 @@ import socket
 from Crypto.Cipher import AES
 import binascii
 import os
+import random
 
 HOST_AS = '127.0.0.1'  # The service server's hostname or IP address
 PORT_AS = 65432        # The port used by the service server
@@ -20,9 +21,6 @@ kc = binascii.unhexlify('1F61ECB5ED5D6BAF8D7A7068B28DCC8E')
 # Sever key
 ks = binascii.unhexlify('2261ECB5ED5D6BAF8D7A7068B28DCC8E')
 
-# Client-Sever key
-kcs = binascii.unhexlify('3361ECB5ED5D6BAF8D7A7068B28DCC8E')
-
 # AES-128 encrypt
 def encrypt(key, plain):
     IV = os.urandom(16)
@@ -34,6 +32,11 @@ def encrypt(key, plain):
     cipher = encryptor.encrypt(plain)
 
     return IV + str.encode(chr(pad_len)) + cipher
+
+def generate_key():
+    chrs = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F']
+    random_str = ''.join([chrs[random.randint(0, 15)] for i in range(32)])
+    key = binascii.unhexlify(random_str)
 
 # Convert ip address into integer
 def convert_ip_int(ip):
@@ -60,6 +63,9 @@ def compose_as_res(data):
     curr_dt = datetime.now()
     timestamp2 = int(round(curr_dt.timestamp()))
     lifetime2 = 2
+
+    # Generate client-server session key
+    kcs = generate_key();
 
     # Compose Tkt and encrypt with Ks
     tkt = (kcs, client_id, client_ip, server_id, timestamp2, lifetime2)

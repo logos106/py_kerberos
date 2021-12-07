@@ -4,6 +4,7 @@ import struct
 from Crypto.Cipher import AES
 import binascii
 import os
+import zlib
 
 HOST_SS = '127.0.0.1'  # The service server's hostname or IP address
 PORT_SS = 65431        # The port used by the service server
@@ -12,15 +13,24 @@ MAX_LEN = 1024
 
 FMT_AP_REQ          = '! 129s 65s'
 FMT_TKT             = '! 16s 36s I 36s I I'
-FMT_AP_RES          = '! I'
-FMT_APP_DATA_REQ    = '! I'
 FMT_AUTHENTICATOR   = '! 36s I I'
+FMT_AP_RES          = 'I'
+FMT_APP_DATA_REQ    = '! I 9s'
+
+APP_DATA_REQUEST = 12345
+APP_DATA         = 1234
+TERMINATE        = 5555
+
+CHUNK_SIZE = 500
 
 # ServerID
 server_id = b'1a1acb43-6bd6-4a26-9ab8-519c7aa08cba'
 
 # Sever key
 ks = binascii.unhexlify('2261ECB5ED5D6BAF8D7A7068B28DCC8E')
+
+# File path
+in_fpath = 'Kerberos System.pdf'
 
 def encrypt(key, plain):
     IV = os.urandom(16)
@@ -35,7 +45,6 @@ def encrypt(key, plain):
 
 def decrypt(key, cipher):
     IV = cipher[:16]
-    print(len(cipher), len(cipher[17:]))
     encryptor = AES.new(key, AES.MODE_CBC, IV=IV)
     plain = encryptor.decrypt(cipher[17:])
     pad_len = int.from_bytes(cipher[16:17], "little")
@@ -53,20 +62,24 @@ def is_ap_req(message):
         return False
 
 def is_app_data_req(message):
+    # Decrypt the message with Kcs
+    msg_dec = decrypt(kcs, message)
+
     s = struct.Struct(FMT_APP_DATA_REQ)
     try:
-        unpacked = s.unpack(message)
+        unpacked = s.unpack(msg_dec)
         return True
     except Exception as e:
         return False
 
 # Main function
 def main():
+    global kcs
+
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         sock.bind((HOST_SS, PORT_SS))
         while True:
             data = sock.recvfrom(MAX_LEN)
-            print(data)
             message = data[0]
             address = data[1]
 
@@ -84,10 +97,8 @@ def main():
                 # Decrypt Tkt with Ks to get Kcs
                 tkt_pack = decrypt(ks, unpacked[0])
                 s = struct.Struct(FMT_TKT)
-                print('tkt_len', len(tkt_pack))
                 tkt = s.unpack(tkt_pack)
                 kcs = tkt[0]
-                print('kcs@server', binascii.hexlify(kcs))
 
                 # Decrypt Authenticator with Kcs to get timestamp3
                 auth_pack = decrypt(kcs, unpacked[1])
@@ -97,14 +108,49 @@ def main():
 
                 # Send AP_RES message for response
                 s = struct.Struct(FMT_AP_RES)
-                res_pack = s.pack(timestamp3 + 1)
-                res_enc = encrypt(kcs, res_pack)
+                resp_pack = s.pack(timestamp3 + 1)
+                resp_enc = encrypt(kcs, resp_pack)
 
-                sock.sendto(res_enc, address)
+                sock.sendto(resp_enc, address)
+
+                continue
+
             if is_app_data_req(message):
-                pass
+                # Decrypt the message with Kcs
+                msg_dec = decrypt(kcs, message)
+
+                # Unpack the APP_DATA_REQUEST
+                s = struct.Struct(FMT_APP_DATA_REQ)
+                unpacked = s.unpack(msg_dec)
+
+                # Read the file and transfer
+                crcvalue = 0
+                with open(in_fpath, 'rb') as f:
+                    chunk = f.read(CHUNK_SIZE)
+                    while len(chunk) > 0:
+                        crcvalue = zlib.crc32(chunk, crcvalue)
+
+                        # Compose packet and send
+                        packet = (APP_DATA, len(chunk), chunk)
+                        s = struct.Struct('! I I ' + '{}s'.format(len(chunk)))
+                        packet = s.pack(*packet)
+                        pack_enc = encrypt(kcs, packet)
+
+                        sock.sendto(pack_enc, address)
+
+                        # Another chunk
+                        chunk = f.read(CHUNK_SIZE)
+
+                # Send TERMINATE packet
+                packet = (TERMINATE, crcvalue)
+                s = struct.Struct('! I I')
+                packet = s.pack(*packet)
+                pack_enc = encrypt(kcs, packet)
+
+                sock.sendto(pack_enc, address)
             else:
-                sock.sendto(b'unknown', address)
+                msg_enc = encrypt(kcs, b'Unknown request')
+                sock.sendto(msg_enc, address)
 
 if __name__ == "__main__":
     main()
