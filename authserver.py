@@ -5,9 +5,10 @@ from Crypto.Cipher import AES
 import binascii
 import os
 import random
+import sys
 
 HOST_AS = '127.0.0.1'  # The service server's hostname or IP address
-PORT_AS = 65432        # The port used by the service server
+PORT_AS = int(sys.argv[1])         #65432        # The port used by the service server
 
 MAX_LEN = 1024
 
@@ -15,11 +16,19 @@ FMT_AS_REQ  = '! 36s 36s I'
 FMT_TKT     = '! 16s 36s I 36s I I'
 FMT_AS_RES  = '! 16s 36s 36s I I 129s'
 
+# ClientID
+client_id = str.encode(sys.argv[2])     #b'b0c6fe2a-72d4-4e02-a389-8243f2c7143c'
+
 # Client key
-kc = binascii.unhexlify('1F61ECB5ED5D6BAF8D7A7068B28DCC8E')
+kc = binascii.unhexlify(sys.argv[3])    # '1F61ECB5ED5D6BAF8D7A7068B28DCC8E'
+
+# ServerID
+server_id = str.encode(sys.argv[4])     #b'1a1acb43-6bd6-4a26-9ab8-519c7aa08cba'
 
 # Sever key
-ks = binascii.unhexlify('2261ECB5ED5D6BAF8D7A7068B28DCC8E')
+ks = binascii.unhexlify(sys.argv[5])    #'2261ECB5ED5D6BAF8D7A7068B28DCC8E')
+
+kcs = binascii.unhexlify('3261ECB5ED5D6BAF8D7A7068B28DCC8E')    #'2261ECB5ED5D6BAF8D7A7068B28DCC8E')
 
 # AES-128 encrypt
 def encrypt(key, plain):
@@ -37,6 +46,8 @@ def generate_key():
     chrs = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F']
     random_str = ''.join([chrs[random.randint(0, 15)] for i in range(32)])
     key = binascii.unhexlify(random_str)
+
+    return key
 
 # Convert ip address into integer
 def convert_ip_int(ip):
@@ -65,7 +76,7 @@ def compose_as_res(data):
     lifetime2 = 2
 
     # Generate client-server session key
-    kcs = generate_key();
+    # kcs = generate_key();
 
     # Compose Tkt and encrypt with Ks
     tkt = (kcs, client_id, client_ip, server_id, timestamp2, lifetime2)
@@ -88,7 +99,6 @@ def main():
         sock.bind((HOST_AS, PORT_AS))
         while True:
             data = sock.recvfrom(MAX_LEN)
-            print(data)
             message = data[0]
             address = data[1]
 

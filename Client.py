@@ -4,12 +4,14 @@ import struct
 from Crypto.Cipher import AES
 import binascii
 import os
+import zlib
+import sys
 
-HOST_AS = '127.0.0.1'  # The authentication server's hostname or IP address
-PORT_AS = 65432        # The port used by the authentication server
+HOST_AS = sys.argv[1]   #'127.0.0.1'  # The authentication server's hostname or IP address
+PORT_AS = int(sys.argv[2])     #65432        # The port used by the authentication server
 
-HOST_SS = '127.0.0.1'  # The service server's hostname or IP address
-PORT_SS = 65431        # The port used by the service server
+HOST_SS = sys.argv[4]   #'127.0.0.1'  # The service server's hostname or IP address
+PORT_SS = int(sys.argv[5])   #65431        # The port used by the service server
 
 MAX_LEN = 1024
 
@@ -24,16 +26,16 @@ APP_DATA         = 1234
 TERMINATE        = 5555
 
 # ClientID
-client_id = b'b0c6fe2a-72d4-4e02-a389-8243f2c7143c'
+client_id = str.encode(sys.argv[7])     #b'b0c6fe2a-72d4-4e02-a389-8243f2c7143c'
 
 # ServerID
-server_id = b'1a1acb43-6bd6-4a26-9ab8-519c7aa08cba'
+server_id = str.encode(sys.argv[8])     #b'1a1acb43-6bd6-4a26-9ab8-519c7aa08cba'
 
 # Client key
-kc = binascii.unhexlify('1F61ECB5ED5D6BAF8D7A7068B28DCC8E')
+kc = binascii.unhexlify(sys.argv[3])  #'1F61ECB5ED5D6BAF8D7A7068B28DCC8E'
 
 # Output file path
-out_fpath = 'output.pdf'
+out_fpath = sys.argv[6]  #output.pdf'
 
 def encrypt(key, plain):
     IV = os.urandom(16)
@@ -58,6 +60,18 @@ def decrypt(key, cipher):
 def convert_ip_int(ip):
     return sum([int(ipField) << 8*index for index, ipField in enumerate(reversed(ip.split('.')))])
 
+def calc_crc(fpath):
+    buffersize = 500
+
+    with open(fpath, 'rb') as afile:
+        buffr = afile.read(buffersize)
+        crcvalue = 0
+        while len(buffr) > 0:
+            crcvalue = zlib.crc32(buffr, crcvalue)
+            buffr = afile.read(buffersize)
+
+    return crcvalue
+
 def main():
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         # Send AS_REQ message to authentication server
@@ -80,7 +94,11 @@ def main():
         s = struct.Struct(FMT_AS_RES)
         unpacked = s.unpack(decrypted)
         kcs = unpacked[0]
+        print('kcs', binascii.hexlify(kcs))
         tkt = unpacked[5]
+
+        # Finished with authenticaion server
+        print('Finished with authenticaion server.')
 
         # Compose Authenticator and encrypt with Kcs
         hostname = socket.gethostname()
@@ -145,8 +163,10 @@ def main():
         if type == TERMINATE:
             s = struct.Struct('! I I')
             _, crcvalue = s.unpack(resp_dec[0:8])
-
             f.close()
+
+            print('Received CRC = ', crcvalue)
+            print('Calculated CRC = ', calc_crc(out_fpath))
 
     # print('Received', repr(data))
 

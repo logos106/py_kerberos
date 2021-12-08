@@ -5,9 +5,10 @@ from Crypto.Cipher import AES
 import binascii
 import os
 import zlib
+import sys
 
 HOST_SS = '127.0.0.1'  # The service server's hostname or IP address
-PORT_SS = 65431        # The port used by the service server
+PORT_SS = int(sys.argv[1])     #65431        # The port used by the service server
 
 MAX_LEN = 1024
 
@@ -27,10 +28,10 @@ CHUNK_SIZE = 500
 server_id = b'1a1acb43-6bd6-4a26-9ab8-519c7aa08cba'
 
 # Sever key
-ks = binascii.unhexlify('2261ECB5ED5D6BAF8D7A7068B28DCC8E')
+ks = binascii.unhexlify(sys.argv[2])       # '2261ECB5ED5D6BAF8D7A7068B28DCC8E'
 
 # File path
-in_fpath = 'Kerberos System.pdf'
+in_fpath = sys.argv[3]      #'Kerberos System.pdf'
 
 def encrypt(key, plain):
     IV = os.urandom(16)
